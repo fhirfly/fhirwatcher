@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Resource, StructureDefinition, Bundle } from 'fhir/r4';
 import _get from 'lodash/get';
 
-interface FHIRSearchResultsProps {
+export interface FHIRSearchResultsProps {
   bundle: Bundle;
+  onSelectResource?: (resource: Resource) => void;
 }
 
 interface StructureDefinitions {
@@ -16,11 +17,9 @@ interface Column {
   defUrl?: string;
 }
 
-interface FhirSearchResultsProps {
-  bundle: Bundle;
-  onSelectResource?: (res: Resource) => void;
-}
-const FHIRSearchResults: React.FC<FHIRSearchResultsProps> = ({ bundle }) => {
+
+const FHIRSearchResults: React.FC<FHIRSearchResultsProps> = ({ bundle, onSelectResource }) => {
+
   const [structureDefs, setStructureDefs] = useState<StructureDefinitions>({});
   const [mainStructureDef, setMainStructureDef] = useState<StructureDefinition | null>(null);
   const [columns, setColumns] = useState<Column[]>([]);
@@ -30,6 +29,7 @@ const FHIRSearchResults: React.FC<FHIRSearchResultsProps> = ({ bundle }) => {
 
   useEffect(() => {
     const fetchStructureDefs = async () => {
+      if (!resourceType) return; // ⛔ Bail if undefined
       try {
         console.log(`Loading structure definitions...`);
 
@@ -58,19 +58,23 @@ const FHIRSearchResults: React.FC<FHIRSearchResultsProps> = ({ bundle }) => {
         console.log('Loaded core type definitions:', Object.keys(typeMap));
 
         const paths = (mainDef.snapshot?.element || [])
-          .filter((el: { path: string | undefined; }) => el.path === resourceType || el.path.startsWith(resourceType + '.'))
-          .map((el: { path: string; type: {
-            [x: string]: any; code: any; 
+  .filter((el: { path: string; }): el is { path: string; type: { code?: string; profile?: string[] }[] } => 
+    typeof el.path === 'string' && 
+    (el.path === resourceType || el.path.startsWith(`${resourceType}.`))
+  )
+  .map((el: { path: string; type: {
+    [x: string]: any; code: any; 
 }[]; }) => {
-            const relativePath = el.path.replace(`${resourceType}.`, '');
-            const typeUrl = el.type?.[0]?.profile?.[0] || el.type?.[0]?.code;
-            return {
-              path: relativePath,
-              label: relativePath,
-              defUrl: typeUrl
-            };
-          })
-          .filter((el: { path: string | string[]; }) => el.path && !el.path.includes('.'));
+    const relativePath = el.path.replace(`${resourceType}.`, '');
+    const typeUrl = el.type?.[0]?.profile?.[0] || el.type?.[0]?.code;
+    return {
+      path: relativePath,
+      label: relativePath,
+      defUrl: typeUrl
+    };
+  })
+  .filter((el: { path: string | string[]; }) => el.path && !el.path.includes('.'));
+
 
        // Filter columns to only those with actual data in at least one resource
 const columnsWithData = paths.filter((col: { path: any; }) => {
@@ -200,13 +204,12 @@ setColumns(columnsWithData);
   
   if (!mainStructureDef) return <div>Loading...</div>;
 
-  function onSelectResource(resource: any): void {
-    throw new Error('Function not implemented.');
-  }
+
 
   const resources: Resource[] = (bundle.entry ?? [])
-  .map((entry) => entry.resource)
+  .map(({ resource }): Resource | undefined => resource)
   .filter((res): res is Resource => res !== undefined);
+
 
   return (
     <div className="overflow-x-auto">
@@ -220,17 +223,17 @@ setColumns(columnsWithData);
         </thead>
 <tbody>
   {resources.map((resource, rowIdx) => (
-    <tr
-      key={rowIdx}
-      className="hover:bg-gray-100 cursor-pointer"
-      onClick={() => onSelectResource?.(resource)}
-    >
-      {columns.map((col, colIdx) => (
-        <td key={colIdx} className="border px-2 py-1">
-          {renderElement(col.path, _get(resource, col.path), col.defUrl)}
-        </td>
-      ))}
-    </tr>
+     <tr
+     key={rowIdx}
+     className="hover:bg-gray-100 cursor-pointer"
+     onClick={() => onSelectResource?.(resource)} // ✅ make sure this is the one!
+   >
+     {columns.map((col, colIdx) => (
+       <td key={colIdx} className="border px-2 py-1">
+         {renderElement(col.path, _get(resource, col.path), col.defUrl)}
+       </td>
+     ))}
+   </tr>
   ))}
 </tbody>
       </table>
