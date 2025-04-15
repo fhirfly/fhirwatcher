@@ -61,46 +61,54 @@ const FHIRSearchResults: React.FC<FHIRSearchResultsProps> = ({ bundle, onSelectR
         console.log('Loaded main structure definition:', mainDef.url);
         console.log('Loaded core type definitions:', Object.keys(typeMap));
   
-        // Extract paths from main structure definition, including extensions
         const paths = (mainDef.snapshot?.element || [])
-          .filter((el: { path: string }) => 
-            typeof el.path === 'string' && 
-            (el.path === resourceType || el.path.startsWith(`${resourceType}.`))
-          )
-          .map((el: { path: string; type: { code?: string; profile?: string[] }[] }) => {
-            const relativePath = el.path.replace(`${resourceType}.`, '');
-            const typeUrl = el.type?.[0]?.profile?.[0] || el.type?.[0]?.code;
-            
-            // Check if it's an extension and label it accordingly
-            if (el.path.includes('extension')) {
-              const extensionTitle = el.short || el.path.split('.').pop();
-              return {
-                path: relativePath,
-                label: extensionTitle,
-                defUrl: typeUrl
-              };
-            }
-  
-            return {
-              path: relativePath,
-              label: relativePath,
-              defUrl: typeUrl
-            };
-          })
-          .filter((el: { path: string }) => el.path && !el.path.includes('.'));
-  
-        // Filter columns to only those with actual data in at least one resource
-        const columnsWithData = paths.filter((col: { path: any }) => {
-          return entries.some(resource => {
-            const val = _get(resource, col.path);
-            return val !== undefined && val !== null &&
-                   !(Array.isArray(val) && val.length === 0) &&
-                   !(typeof val === 'object' && Object.keys(val).length === 0);
-          });
+        .filter((el: { path: string }) =>
+          typeof el.path === 'string' &&
+          (el.path === resourceType || el.path.startsWith(`${resourceType}.`))
+        );
+
+        const uniquePathMap = new Map<string, typeof paths[0]>();
+
+        paths.forEach((el: { path: string | any[]; }) => {
+          if (typeof el.path === 'string' && !el.path.slice(resourceType.length + 1).includes('.')) {
+            uniquePathMap.set(el.path, el);
+          }
         });
-  
+
+        const dedupedElements = Array.from(uniquePathMap.values());
+
+        const dedupedColumns = dedupedElements.map((el: any) => {
+        const relativePath = el.path.replace(`${resourceType}.`, '');
+        const typeUrl = el.type?.[0]?.profile?.[0] || el.type?.[0]?.code;
+
+        if (el.path.includes('extension')) {
+          const extensionTitle = el.short || el.path.split('.').pop();
+          return {
+            path: relativePath,
+            label: extensionTitle,
+            defUrl: typeUrl
+          };
+        }
+
+        return {
+          path: relativePath,
+          label: relativePath,
+          defUrl: typeUrl
+        };
+        });
+
+        // Only use columns with actual data
+        const columnsWithData = dedupedColumns.filter((col: { path: any }) => {
+        return entries.some(resource => {
+          const val = _get(resource, col.path);
+          return val !== undefined && val !== null &&
+                !(Array.isArray(val) && val.length === 0) &&
+                !(typeof val === 'object' && Object.keys(val).length === 0);
+        });
+        });
+
         setColumns(columnsWithData);
-  
+
         console.log('Extracted columns:', paths);
       } catch (err) {
         console.error('Failed to fetch structure definitions:', err);
@@ -153,42 +161,56 @@ const FHIRSearchResults: React.FC<FHIRSearchResultsProps> = ({ bundle, onSelectR
       return value.map((v, i) => <div key={i}>{renderElement(path, v, defUrl)}</div>);
     }
   
-    if (typeof value === 'object' && value !== null) {
-      // Handle extensions explicitly
-      if (value.url && value.extension) {
-        const extUrl = value.url;
-        const extDef = structureDefs[extUrl];
+    // 🔍 Handle FHIR Extensions
+    if (typeof value === 'object' && value !== null && value.url) {
+      const extUrl = value.url;
+      const extDef = structureDefs[extUrl];
+      const label = extDef?.title || extDef?.name || extUrl.split('/').pop();
   
-        if (!extDef) {
-          loadExtensionDef(extUrl).then(() => {
-            console.log(`Loaded extension definition for ${extUrl}`);
-          });
-          return <span className="text-yellow-500">[Loading extension...]</span>;
-        }
+      // 🧩 Complex extension (has nested .extension array)
+      if (Array.isArray(value.extension)) {
+        const renderedSubs = value.extension.map((subExt: any, idx: number) => {
+          const valKey = Object.keys(subExt).find(k => k.startsWith('value'));
+          const val = valKey ? subExt[valKey] : '';
+          const subPath = subExt.url;
+  
+          // Try to resolve the 'short' description from StructureDefinition
+          const subElShort =
+            extDef?.snapshot?.element?.find(e => e.path.endsWith(`extension:${subPath}`))?.short;
+  
+          const subLabel = subElShort || subPath;
+  
+          return `${subLabel}: ${typeof val === 'object' ? JSON.stringify(val) : String(val)}`;
+        });
   
         return (
-          <div className="ml-2 border-l pl-2 border-gray-300">
-            <strong>{extDef.title || extDef.name || extUrl}</strong>
-            {value.extension.map((ext: any, i: number) => {
-              const extKey = ext.url;
-              const extValueKey = Object.keys(ext).find(k => k.startsWith('value'));
-              const extValue = ext[extValueKey!];
-              return (
-                <div key={i}>
-                  <strong>{extKey}</strong>: {String(extValue)}
-                </div>
-              );
-            })}
+          <div>
+            <strong>{label}</strong>: {renderedSubs.join(', ')}
           </div>
         );
       }
   
-      // Otherwise, render complex types
+      // 🧷 Simple extension (has direct value)
+      const valKey = Object.keys(value).find(k => k.startsWith('value'));
+      if (valKey) {
+        const val = value[valKey];
+        return (
+          <div>
+            <strong>{label}</strong>: {String(val)}
+          </div>
+        );
+      }
+  
+      return <div><strong>{label}</strong></div>;
+    }
+  
+    // 🧱 Complex types
+    if (typeof value === 'object' && value !== null) {
       const resolvedUrl = defUrl ? resolveDefinitionUrl(defUrl) : null;
       const complexDef = resolvedUrl ? structureDefs[resolvedUrl] : null;
   
       if (!complexDef) {
-        if (defUrl && defUrl.startsWith('http')) {
+        if (defUrl?.startsWith('http')) {
           loadExtensionDef(defUrl).then(() => {
             console.log(`Loaded structure definition for ${defUrl}`);
           });
@@ -216,6 +238,9 @@ const FHIRSearchResults: React.FC<FHIRSearchResultsProps> = ({ bundle, onSelectR
   
     return <span>{String(value)}</span>;
   };
+  
+  
+  
   
   if (!mainStructureDef) return <div>Loading...</div>;
 
