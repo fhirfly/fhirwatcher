@@ -1,0 +1,32 @@
+.fhir-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 1rem;
+    margin: 2rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  
+  .fhir-cell {
+    border: 1px solid #ccc;
+    padding: 1rem;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+    transition: background-color 0.3s ease;
+  }
+  
+  .fhir-cell:hover {
+    background-color: #eef6ff;
+  }
+  
+  .fhir-label {
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 0.5rem;
+  }
+  
+  .fhir-value {
+    color: #444;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  
