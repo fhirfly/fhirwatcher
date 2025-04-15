@@ -26,78 +26,93 @@ const FHIRSearchResults: React.FC<FHIRSearchResultsProps> = ({ bundle, onSelectR
 
   const entries = bundle.entry?.map(e => e.resource).filter(Boolean) || [];
   const resourceType = entries[0]?.resourceType;
-
   useEffect(() => {
     const fetchStructureDefs = async () => {
-      if (!resourceType) return; // ⛔ Bail if undefined
+      if (!resourceType) return; // Bail if resourceType is undefined
       try {
         console.log(`Loading structure definitions...`);
-
+  
+        // Define local paths for structure definitions
         const baseProfile = `/us-core/StructureDefinition-us-core-${resourceType.toLowerCase()}.json`;
         const coreTypes = '/us-core/profiles-types.json';
-
+  
+        // Fetch the locally stored structure definitions
         const [mainDef, typesDef] = await Promise.all([
           fetch(baseProfile).then(res => res.json()),
           fetch(coreTypes).then(res => res.json())
         ]);
-
+  
         const typeMap: StructureDefinitions = {};
+        // Iterate over entries in profiles-types.json and populate the typeMap with local data
         (typesDef.entry || []).forEach((entry: any) => {
           if (entry.resource?.resourceType === 'StructureDefinition') {
             const def: StructureDefinition = entry.resource;
             typeMap[def.url] = def;
           }
         });
-
+  
+        // Add the main definition to the map
         typeMap[mainDef.url] = mainDef;
-
+  
+        // Update state with the fetched definitions
         setStructureDefs(typeMap);
         setMainStructureDef(mainDef);
-
+  
         console.log('Loaded main structure definition:', mainDef.url);
         console.log('Loaded core type definitions:', Object.keys(typeMap));
-
+  
+        // Extract paths from main structure definition, including extensions
         const paths = (mainDef.snapshot?.element || [])
-  .filter((el: { path: string; }): el is { path: string; type: { code?: string; profile?: string[] }[] } => 
-    typeof el.path === 'string' && 
-    (el.path === resourceType || el.path.startsWith(`${resourceType}.`))
-  )
-  .map((el: { path: string; type: {
-    [x: string]: any; code: any; 
-}[]; }) => {
-    const relativePath = el.path.replace(`${resourceType}.`, '');
-    const typeUrl = el.type?.[0]?.profile?.[0] || el.type?.[0]?.code;
-    return {
-      path: relativePath,
-      label: relativePath,
-      defUrl: typeUrl
-    };
-  })
-  .filter((el: { path: string | string[]; }) => el.path && !el.path.includes('.'));
-
-
-       // Filter columns to only those with actual data in at least one resource
-const columnsWithData = paths.filter((col: { path: any; }) => {
-  return entries.some(resource => {
-    const val = _get(resource, col.path);
-    return val !== undefined && val !== null &&
-           !(Array.isArray(val) && val.length === 0) &&
-           !(typeof val === 'object' && Object.keys(val).length === 0);
-  });
-});
-
-setColumns(columnsWithData);
-
+          .filter((el: { path: string }) => 
+            typeof el.path === 'string' && 
+            (el.path === resourceType || el.path.startsWith(`${resourceType}.`))
+          )
+          .map((el: { path: string; type: { code?: string; profile?: string[] }[] }) => {
+            const relativePath = el.path.replace(`${resourceType}.`, '');
+            const typeUrl = el.type?.[0]?.profile?.[0] || el.type?.[0]?.code;
+            
+            // Check if it's an extension and label it accordingly
+            if (el.path.includes('extension')) {
+              const extensionTitle = el.short || el.path.split('.').pop();
+              return {
+                path: relativePath,
+                label: extensionTitle,
+                defUrl: typeUrl
+              };
+            }
+  
+            return {
+              path: relativePath,
+              label: relativePath,
+              defUrl: typeUrl
+            };
+          })
+          .filter((el: { path: string }) => el.path && !el.path.includes('.'));
+  
+        // Filter columns to only those with actual data in at least one resource
+        const columnsWithData = paths.filter((col: { path: any }) => {
+          return entries.some(resource => {
+            const val = _get(resource, col.path);
+            return val !== undefined && val !== null &&
+                   !(Array.isArray(val) && val.length === 0) &&
+                   !(typeof val === 'object' && Object.keys(val).length === 0);
+          });
+        });
+  
+        setColumns(columnsWithData);
+  
         console.log('Extracted columns:', paths);
       } catch (err) {
         console.error('Failed to fetch structure definitions:', err);
       }
     };
-
+  
     if (resourceType) {
       fetchStructureDefs();
     }
   }, [resourceType]);
+  
+  
 
   function resolveDefinitionUrl(type: string): string | undefined {
     if (!type) return undefined;
