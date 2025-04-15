@@ -30,3 +30,25 @@
     word-break: break-word;
   }
   
+  .fhir-table {
+    margin: 2rem;
+    font-family: sans-serif;
+  }
+  
+  .fhir-table table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  
+  .fhir-table th,
+  .fhir-table td {
+    padding: 0.75rem;
+    border: 1px solid #ccc;
+    text-align: left;
+  }
+  
+  .fhir-table th {
+    background-color: #f0f0f0;
+    font-weight: bold;
+  }
+  
