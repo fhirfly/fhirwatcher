@@ -1,19 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { SearchParam } from '../utils/fhir-client';
+import React, { JSX, useEffect, useState } from 'react';
 
-type Param = {
-  code: string;
-  type: string;
-  description?: string;
-};
-
-interface FhirSearchBuilderProps {
-  resourceType: string;
-  onSearch: (params: SearchParam[]) => void;
-}
+// This is assumed to be available in scope — replace with your actual implementation
+declare function SearchResource(resourceType: string, parameters: { name: string; value: string }[]): void;
 
 const typeMap: Record<string, (name: string, value: string, onChange: (v: string) => void) => JSX.Element> = {
-  base64Binary: (n, _, onChange) => <input type="file" name={n} onChange={(e) => onChange(e.target.value)} />,
+  base64Binary: (n, v, onChange) => <input type="file" name={n} onChange={(e) => onChange(e.target.value)} />,
   boolean: (n, v, onChange) => (
     <select name={n} value={v} onChange={(e) => onChange(e.target.value)}>
       <option value="">--</option>
@@ -42,7 +33,13 @@ const typeMap: Record<string, (name: string, value: string, onChange: (v: string
   token: (n, v, onChange) => <input type="text" name={n} value={v} onChange={(e) => onChange(e.target.value)} />,
 };
 
-const FhirSearchBuilder: React.FC<FhirSearchBuilderProps> = ({ resourceType, onSearch }) => {
+type Param = {
+  code: string;
+  type: string;
+  description?: string;
+};
+
+export const FhirSearchBuilder: React.FC<{ resourceType: string }> = ({ resourceType }) => {
   const [params, setParams] = useState<Param[]>([]);
   const [formState, setFormState] = useState<Record<string, string>>({});
 
@@ -72,7 +69,7 @@ const FhirSearchBuilder: React.FC<FhirSearchBuilderProps> = ({ resourceType, onS
     }
 
     setParams(relevant);
-    setFormState({});
+    setFormState({}); // reset on resource change
   }, [resourceType]);
 
   const handleChange = (code: string, value: string) => {
@@ -84,29 +81,25 @@ const FhirSearchBuilder: React.FC<FhirSearchBuilderProps> = ({ resourceType, onS
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
     const searchParams = Object.entries(formState)
       .filter(([_, v]) => v !== '')
       .map(([name, value]) => ({ name, value }));
-    onSearch(searchParams);
+
+    SearchResource(resourceType, searchParams);
   };
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit}>
+    <form className="fhir-search-form" onSubmit={handleSubmit}>
       {params.map((param) => (
-        <div key={param.code}>
-          <label htmlFor={param.code} title={param.description || ''} className="block font-medium">
+        <div key={param.code} className="form-group" style={{ marginBottom: '1em' }}>
+          <label htmlFor={param.code} title={param.description || ''}>
             {param.code}
           </label>
-          {(typeMap[param.type] || typeMap['string'])(param.code, formState[param.code] || '', (v) =>
-            handleChange(param.code, v)
-          )}
+          {(typeMap[param.type] || typeMap['string'])(param.code, formState[param.code] || '', (v) => handleChange(param.code, v))}
         </div>
       ))}
-      <button type="submit" className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-        Search
-      </button>
+      <button type="submit">Search</button>
     </form>
   );
 };
-
-export default FhirSearchBuilder;
